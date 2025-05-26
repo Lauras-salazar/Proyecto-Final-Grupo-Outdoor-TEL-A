@@ -1,0 +1,58 @@
+import network
+import socket
+import time
+
+SSID = "Pico_AP"
+PASSWORD = "12345678"
+SERVER_IP = "192.168.4.1"
+SERVER_PORT = 8080
+
+def connect_wifi(ssid, password):
+    sta = network.WLAN(network.STA_IF)
+    if not sta.active():
+        sta.active(True)
+    
+    if not sta.isconnected():
+        print("🔌 Conectando a la red WiFi...")
+        sta.connect(ssid, password)
+        while not sta.isconnected():
+            time.sleep(1)
+    print("✅ Conectado al AP:", sta.ifconfig()[0])
+    return sta
+
+def connect_to_server(ip, port):
+    s = socket.socket()
+    try:
+        s.connect((ip, port))
+        print("🔗 Conectado al servidor TCP")
+        return s
+    except OSError as e:
+        print("❌ Error al conectar con el servidor:", e)
+        s.close()
+        return None
+
+sta = connect_wifi(SSID, PASSWORD)
+time.sleep(2)  # Tiempo para estabilizar conexión
+
+sock = connect_to_server(SERVER_IP, SERVER_PORT)
+
+while True:
+    if not sta.isconnected():
+        print("⚠️ Conexión WiFi perdida. Reconectando...")
+        sta = connect_wifi(SSID, PASSWORD)
+        time.sleep(2)
+        sock = connect_to_server(SERVER_IP, SERVER_PORT)
+
+    try:
+        data = sock.recv(1024)
+        if data:
+            print("📥 Datos recibidos:", data.decode())
+    except OSError as e:
+        print("⚠️ Error de socket:", e)
+        print("🔁 Intentando reconectar al servidor...")
+        try:
+            sock.close()
+        except:
+            pass
+        time.sleep(2)
+        sock = connect_to_server(SERVER_IP, SERVER_PORT)
