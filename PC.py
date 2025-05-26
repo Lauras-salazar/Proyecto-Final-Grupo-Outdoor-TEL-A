@@ -12,22 +12,22 @@ MAX_LEN = 50  # Número de puntos mostrados en la gráfica
 gx_data, gy_data, gz_data = [], [], []
 ax_data, ay_data, az_data = [], [], []
 rssi = 0
-mac_dict = {}
+mac_dict = {} #Almacena pares MAC → RSSI
 
 # Función para calcular distancia estimada a partir del RSSI
 def calcular_distancia(rssi, tx_power=-59, n=2):
-    return 10 ** ((tx_power - rssi) / (10 * n))
+    return 10 ** ((tx_power - rssi) / (10 * n)) #Fórmula de propagación logarítmica para estimar la distancia en metros a partir del RSSI.
 
 # Función para leer datos seriales en segundo hilo
 def leer_datos_serial():
     global gx_data, gy_data, gz_data, ax_data, ay_data, az_data, rssi, mac_dict
     while True:
         try:
-            linea = ser.readline().decode('utf-8', errors='ignore').strip()
+            linea = ser.readline().decode('utf-8', errors='ignore').strip() #Corre en un hilo separado.
 
             # Extraer RSSI y MAC
             if "RSSI" in linea and "MAC" in linea:
-                match_red = re.search(r"RSSI:\s*(-?\d+), MAC:\s*([0-9a-f:]+)", linea, re.IGNORECASE)
+                match_red = re.search(r"RSSI:\s*(-?\d+), MAC:\s*([0-9a-f:]+)", linea, re.IGNORECASE) #Datos del MPU y datos de red RSSI y MAC
                 if match_red:
                     rssi = int(match_red.group(1))
                     mac = match_red.group(2)
@@ -109,11 +109,10 @@ def actualizar_tabla(i):
 # Configurar animaciones de matplotlib
 ani1 = FuncAnimation(fig_gyro, actualizar_giroscopio, interval=500)
 ani2 = FuncAnimation(fig_accel, actualizar_acelerometro, interval=500)
-ani3 = FuncAnimation(fig_tabla, actualizar_tabla, interval=1000)
-
+ani3 = FuncAnimation(fig_tabla, actualizar_tabla, interval=1000) #Las gráficas se actualizan automáticamente cada medio segundo o cada segundo.
 # Iniciar hilo para lectura serial en background
 thread = threading.Thread(target=leer_datos_serial, daemon=True)
-thread.start()
+thread.start() #El hilo de lectura serial corre en background mientras la ventana matplotlib se muestra con plt.show().
 
 # Mostrar ventanas
 plt.show()
