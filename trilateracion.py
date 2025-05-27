@@ -1,41 +1,36 @@
-import serial
-import threading
-import re
-import tkinter as tk
-from tkinter import ttk
-from collections import deque
-import math
-
+import serial               # Para leer datos del puerto serial
+import threading            # Permite ejecutar la lectura del puerto serial en un hilo separado
+import re                   # Para usar expresiones regulares (extraer datos específicos)
+import tkinter as tk        # Interfaz gráfica básica
+from tkinter import ttk     # Estilos de widgets de Tkinter
+from collections import deque # Estructura de cola con límite de longitud para datos en tiempo real
+import math                 # Funciones matemáticas estándar
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('TkAgg')     # Usa el backend de Matplotlib compatible con Tkinter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
-
-# CONFIGURA TU PUERTO SERIAL AQUÍ
-SERIAL_PORT = 'COM4'
-BAUD_RATE = 115200
-MAX_POINTS = 100
-
-# Coordenadas fijas para los nodos (x, y) en metros
+SERIAL_PORT = 'COM4'        # Puerto serial a usar
+BAUD_RATE = 115200          # Velocidad de comunicación (baudios)
+MAX_POINTS = 100            # Número máximo de puntos en los gráficos
+# Coordenadas fijas de los nodos (x, y)
 fixed_nodes = {
     '28:cd:c1:06:4c:bb:': (0, 0),
     '28:cd:c1:06:61:cd:': (4, 0),
     '28:cd:c1:06:5f:f9:': (0, 4),
-    'MAC4': (4, 4)
+    'MAC4': (4, 4)  # Nodo ficticio adicional
 }
-
-data = {}
-
+data = {}  # Diccionario que almacenará los datos de cada nodo
 def rssi_to_distance(rssi, tx_power=-59, n=2.0):
+    # Fórmula logarítmica para calcular distancia aproximada en metros desde RSSI
     return round(10 ** ((tx_power - rssi) / (10 * n)), 2)
-
 def trilateration(positions, distances):
     if len(positions) < 3:
-        return None
+        return None  # Se necesitan al menos 3 puntos
 
     (x1, y1), (x2, y2), (x3, y3) = positions[:3]
     r1, r2, r3 = distances[:3]
 
+    # Cálculo basado en geometría analítica
     A = 2 * (x2 - x1)
     B = 2 * (y2 - y1)
     C = r1*2 - r22 - x12 + x22 - y12 + y2*2
@@ -45,13 +40,13 @@ def trilateration(positions, distances):
 
     denominator = (A * E - B * D)
     if denominator == 0:
-        return None
+        return None  # No se puede resolver si el determinante es 0
 
     x = (C * E - B * F) / denominator
     y = (A * F - C * D) / denominator
     return (x, y)
-
 def parse_line_block(lines):
+    # Inicialización
     mac, rssi = None, None
     ax = ay = az = gx = gy = gz = None
 
@@ -72,7 +67,6 @@ def parse_line_block(lines):
                 gx, gy, gz = float(match.group(1)), float(match.group(2)), float(match.group(3))
 
     return mac, rssi, ax, ay, az, gx, gy, gz
-
 def serial_listener():
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
@@ -82,11 +76,13 @@ def serial_listener():
         while True:
             line = ser.readline().decode(errors='ignore').strip()
             if line == "----------------------------------------":
+                # Se terminó un bloque
                 mac, rssi, ax, ay, az, gx, gy, gz = parse_line_block(block)
-                block = []
+                block = []  # Reiniciar
 
                 if mac and rssi is not None:
                     if mac not in data:
+                        # Crear entrada
                         data[mac] = {
                             'rssi': rssi,
                             'distance': rssi_to_distance(rssi),
@@ -98,27 +94,25 @@ def serial_listener():
                             'gyro_z': deque(maxlen=MAX_POINTS),
                         }
 
+                    # Actualizar valores
                     data[mac]['rssi'] = rssi
                     data[mac]['distance'] = rssi_to_distance(rssi)
 
-                    if ax is not None and ay is not None and az is not None:
+                    # Agregar valores de sensores si existen
+                    if ax is not None:
                         data[mac]['accel_x'].append(ax)
                         data[mac]['accel_y'].append(ay)
                         data[mac]['accel_z'].append(az)
-
-                    if gx is not None and gy is not None and gz is not None:
+                    if gx is not None:
                         data[mac]['gyro_x'].append(gx)
                         data[mac]['gyro_y'].append(gy)
                         data[mac]['gyro_z'].append(gz)
 
             else:
-                block.append(line)
+                block.append(line)  # Acumula líneas de un bloque
 
     except Exception as e:
         print("❌ Error en lectura serial:", e)
-
-# --- INTERFAZ GRAFICA ---
-
 class App(tk.Tk):
     def _init_(self):
         super()._init_()
@@ -127,17 +121,19 @@ class App(tk.Tk):
 
         self.create_widgets()
         self.update_gui()
-
     def create_widgets(self):
+        # Tabla
         self.tree = ttk.Treeview(self, columns=('MAC', 'RSSI', 'Distancia'), show='headings')
         self.tree.heading('MAC', text='MAC')
         self.tree.heading('RSSI', text='RSSI (dBm)')
         self.tree.heading('Distancia', text='Distancia (m)')
         self.tree.pack(side=tk.TOP, fill=tk.X)
 
+        # Gráficos de sensores y trilateración
         frame_plots = tk.Frame(self)
         frame_plots.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
+        # Sensores
         self.fig_sensors, (self.ax_g, self.ax_a) = plt.subplots(2, 1, figsize=(5, 4))
         plt.tight_layout()
         self.ax_g.set_title('Giroscopio')
@@ -149,6 +145,7 @@ class App(tk.Tk):
         self.ax_a.set_ylim(-3, 3)
         self.ax_a.grid(True)
 
+        # Curvas
         self.line_gx, = self.ax_g.plot([], [], label='Gx')
         self.line_gy, = self.ax_g.plot([], [], label='Gy')
         self.line_gz, = self.ax_g.plot([], [], label='Gz')
@@ -163,6 +160,7 @@ class App(tk.Tk):
         canvas_sensors.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.canvas_sensors = canvas_sensors
 
+        # Gráfico de trilateración
         self.fig_trilat, self.ax_trilat = plt.subplots(figsize=(5, 4))
         self.ax_trilat.set_xlim(-1, 6)
         self.ax_trilat.set_ylim(-1, 6)
@@ -172,28 +170,26 @@ class App(tk.Tk):
         canvas_trilat = FigureCanvasTkAgg(self.fig_trilat, master=frame_plots)
         canvas_trilat.get_tk_widget().pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.canvas_trilat = canvas_trilat
-
     def update_gui(self):
-        for i in self.tree.get_children():
-            self.tree.delete(i)
+        self.tree.delete(*self.tree.get_children())  # Limpiar tabla
+
         for mac in data:
             self.tree.insert('', tk.END, values=(mac, data[mac]['rssi'], data[mac]['distance']))
 
-        if data:
-            for mac, d in data.items():
-                if len(d['gyro_x']) > 0 and len(d['accel_x']) > 0:
-                    x = list(range(len(d['gyro_x'])))
-                    self.line_gx.set_data(x, d['gyro_x'])
-                    self.line_gy.set_data(x, d['gyro_y'])
-                    self.line_gz.set_data(x, d['gyro_z'])
-                    self.line_ax.set_data(x, d['accel_x'])
-                    self.line_ay.set_data(x, d['accel_y'])
-                    self.line_az.set_data(x, d['accel_z'])
-                    self.ax_g.set_xlim(0, MAX_POINTS)
-                    self.ax_a.set_xlim(0, MAX_POINTS)
-                    self.canvas_sensors.draw()
-                    break
+        # Graficar sensores de un nodo
+        for mac, d in data.items():
+            if len(d['gyro_x']) > 0:
+                x = list(range(len(d['gyro_x'])))
+                self.line_gx.set_data(x, d['gyro_x'])
+                self.line_gy.set_data(x, d['gyro_y'])
+                self.line_gz.set_data(x, d['gyro_z'])
+                self.line_ax.set_data(x, d['accel_x'])
+                self.line_ay.set_data(x, d['accel_y'])
+                self.line_az.set_data(x, d['accel_z'])
+                self.canvas_sensors.draw()
+                break
 
+        # Graficar trilateración
         self.ax_trilat.clear()
         self.ax_trilat.set_xlim(-1, 6)
         self.ax_trilat.set_ylim(-1, 6)
@@ -206,7 +202,7 @@ class App(tk.Tk):
         for mac, (x, y) in fixed_nodes.items():
             self.ax_trilat.plot(x, y, 'ro')
             self.ax_trilat.text(x + 0.1, y + 0.1, mac)
-            if mac in data and 'distance' in data[mac]:
+            if mac in data:
                 positions.append((x, y))
                 distances.append(data[mac]['distance'])
 
@@ -220,10 +216,7 @@ class App(tk.Tk):
                     self.ax_trilat.plot([fx, x], [fy, y], 'k--', alpha=0.3)
 
         self.canvas_trilat.draw()
-        self.after(1000, self.update_gui)
-
-# ✅ PUNTO DE ENTRADA CORRECTO
-if _name_ == "_main_":
+        self.after(1000, self.update_gui)  # Se actualiza cada segundo
+if __name__ == "__main__":  # ⚠️ Estaba mal escrito como _name_ == "_main_"
     threading.Thread(target=serial_listener, daemon=True).start()
     app = App()
-    app.mainloop()
