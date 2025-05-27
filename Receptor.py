@@ -1,35 +1,40 @@
-import network
-import socket
-import time
+import network       # Módulo para configurar y manejar la conexión Wi-Fi
+import socket        # Módulo para manejar conexiones de red (UDP/TCP)
+import time          # Módulo para manejar retardos y tiempos
 
-SSID = 'motoe'          # Cambia aquí
-PASSWORD = '123456789'  # Cambia aquí
+# --- Credenciales Wi-Fi ---
+SSID = 'motoe'          # Nombre de la red Wi-Fi
+PASSWORD = '123456789'  # Contraseña del Wi-Fi
 
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-wlan.connect(SSID, PASSWORD)
+# --- Configurar conexión Wi-Fi en modo estación ---
+wlan = network.WLAN(network.STA_IF)  # Configura el modo cliente Wi-Fi
+wlan.active(True)                    # Activa la interfaz Wi-Fi
+wlan.connect(SSID, PASSWORD)         # Conecta al Wi-Fi
 
 print("Conectando a WiFi...")
-while not wlan.isconnected():
+while not wlan.isconnected():        # Espera hasta que se conecte
     time.sleep(1)
 
-print("Receptor conectado. IP:", wlan.ifconfig()[0])
+print("Receptor conectado. IP:", wlan.ifconfig()[0])  # Imprime la IP asignada
 
+# --- Configuración del servidor UDP ---
 PORT = 12345
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('0.0.0.0', PORT))
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # Crea el socket tipo UDP
+sock.bind(('0.0.0.0', PORT))  # Escucha en todas las interfaces de red, en el puerto 12345
 
 print(f"Escuchando en puerto {PORT}...")
 
+# Diccionario para almacenar información por dispositivo (usando MAC como clave)
 dispositivos = {}
 
+# --- Bucle principal para recibir y procesar mensajes ---
 while True:
-    data, addr = sock.recvfrom(1024)
-    mensaje = data.decode().strip()
-    partes = mensaje.split(',')
+    data, addr = sock.recvfrom(1024)   # Espera recibir un mensaje UDP
+    mensaje = data.decode().strip()    # Decodifica el mensaje recibido
+    partes = mensaje.split(',')        # Separa los campos del mensaje
 
     if len(partes) == 2:
-        # Solo MAC y RSSI
+        # Mensaje simple: solo MAC y RSSI
         mac, rssi = partes
         dispositivos[mac] = {
             "rssi": int(rssi),
@@ -41,7 +46,7 @@ while True:
         print("-" * 40)
 
     elif len(partes) == 8:
-        # MAC, RSSI y datos MPU
+        # Mensaje completo: MAC, RSSI, acelerómetro y giroscopio
         mac, rssi, ax, ay, az, gx, gy, gz = partes
         dispositivos[mac] = {
             "rssi": int(rssi),
@@ -55,4 +60,6 @@ while True:
         print("-" * 40)
 
     else:
+        # Si el mensaje no tiene 2 ni 8 partes, no es reconocido
         print("Mensaje recibido con formato inesperado:", mensaje)
+
